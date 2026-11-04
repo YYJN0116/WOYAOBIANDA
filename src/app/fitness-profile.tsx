@@ -1,13 +1,13 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { saveFitnessProfile } from '@/lib/workout-preferences';
-import type { FitnessProfile } from '@/types/workout';
+import { loadFitnessProfile, saveFitnessProfile } from '@/lib/workout-preferences';
+import type { FitnessProfile, WeeklyDays } from '@/types/workout';
 
 const genders: { value: FitnessProfile['gender']; label: string }[] = [
   { value: 'male', label: '男' },
@@ -26,6 +26,11 @@ const workoutTimes: { value: FitnessProfile['preferredWorkoutTime']; label: stri
   { value: 'afternoon', label: '下午' },
   { value: 'evening', label: '晚上' },
 ];
+const weeklyDayOptions: { value: WeeklyDays; label: string }[] = [
+  { value: 3, label: '3天' },
+  { value: 4, label: '4天' },
+  { value: 5, label: '5天' },
+];
 
 export default function FitnessProfileScreen() {
   const [age, setAge] = useState('');
@@ -35,6 +40,26 @@ export default function FitnessProfileScreen() {
   const [goal, setGoal] = useState<FitnessProfile['goal'] | null>(null);
   const [preferredWorkoutTime, setPreferredWorkoutTime] =
     useState<FitnessProfile['preferredWorkoutTime'] | null>(null);
+  const [weeklyDays, setWeeklyDays] = useState<WeeklyDays | null>(null);
+
+  useEffect(() => {
+    loadFitnessProfile()
+      .then((saved) => {
+        if (!saved) return;
+        setAge(String(saved.age));
+        setGender(saved.gender);
+        setHeightCm(String(saved.heightCm));
+        setWeightKg(String(saved.weightKg));
+        setGoal(saved.goal);
+        setPreferredWorkoutTime(saved.preferredWorkoutTime);
+        if (saved.weeklyDays) {
+          setWeeklyDays(saved.weeklyDays);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to prefill fitness profile.', error);
+      });
+  }, []);
 
   const submit = async () => {
     const ageValue = Number(age);
@@ -50,7 +75,8 @@ export default function FitnessProfileScreen() {
       !Number.isFinite(weightValue) ||
       weightValue <= 0 ||
       !goal ||
-      !preferredWorkoutTime
+      !preferredWorkoutTime ||
+      !weeklyDays
     ) {
       Alert.alert('还差一些资料', '请完成所有问题后再继续。');
       return;
@@ -64,6 +90,7 @@ export default function FitnessProfileScreen() {
         weightKg: weightValue,
         goal,
         preferredWorkoutTime,
+        weeklyDays,
       };
       await saveFitnessProfile(profile);
       router.replace('/body-parts');
@@ -91,20 +118,54 @@ export default function FitnessProfileScreen() {
           </ThemedText>
 
           <Field label="年龄">
-            <TextInput value={age} onChangeText={setAge} keyboardType="number-pad" placeholder="例如 25" placeholderTextColor="#9AAFA5" style={styles.input} />
+            <TextInput
+              value={age}
+              onChangeText={setAge}
+              keyboardType="number-pad"
+              placeholder="例如 25"
+              placeholderTextColor="#9AAFA5"
+              style={styles.input}
+            />
           </Field>
           <Field label="身高（厘米）">
-            <TextInput value={heightCm} onChangeText={setHeightCm} keyboardType="decimal-pad" placeholder="例如 170" placeholderTextColor="#9AAFA5" style={styles.input} />
+            <TextInput
+              value={heightCm}
+              onChangeText={setHeightCm}
+              keyboardType="decimal-pad"
+              placeholder="例如 170"
+              placeholderTextColor="#9AAFA5"
+              style={styles.input}
+            />
           </Field>
           <Field label="体重（公斤）">
-            <TextInput value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" placeholder="例如 65" placeholderTextColor="#9AAFA5" style={styles.input} />
+            <TextInput
+              value={weightKg}
+              onChangeText={setWeightKg}
+              keyboardType="decimal-pad"
+              placeholder="例如 65"
+              placeholderTextColor="#9AAFA5"
+              style={styles.input}
+            />
           </Field>
 
           <ChoiceSection title="性别" options={genders} selected={gender} onSelect={setGender} />
           <ChoiceSection title="目前的目标" options={goals} selected={goal} onSelect={setGoal} />
-          <ChoiceSection title="通常什么时候运动？" options={workoutTimes} selected={preferredWorkoutTime} onSelect={setPreferredWorkoutTime} />
+          <ChoiceSection
+            title="通常什么时候运动？"
+            options={workoutTimes}
+            selected={preferredWorkoutTime}
+            onSelect={setPreferredWorkoutTime}
+          />
+          <ChoiceSection
+            title="每周训练天数"
+            options={weeklyDayOptions}
+            selected={weeklyDays}
+            onSelect={setWeeklyDays}
+          />
 
-          <Pressable onPress={submit} style={({ pressed }) => [styles.submitButton, pressed && styles.pressed]}>
+          <Pressable
+            onPress={submit}
+            style={({ pressed }) => [styles.submitButton, pressed && styles.pressed]}>
             <ThemedText style={styles.submitText}>保存并继续</ThemedText>
           </Pressable>
         </ScrollView>
@@ -122,7 +183,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function ChoiceSection<T extends string>({
+function ChoiceSection<T extends string | number>({
   title,
   options,
   selected,
@@ -138,8 +199,16 @@ function ChoiceSection<T extends string>({
       <ThemedText type="smallBold">{title}</ThemedText>
       <View style={styles.choiceList}>
         {options.map((option) => (
-          <Pressable key={option.value} onPress={() => onSelect(option.value)} style={({ pressed }) => [styles.choice, selected === option.value && styles.selectedChoice, pressed && styles.pressed]}>
-            <ThemedText style={selected === option.value ? styles.selectedChoiceText : styles.choiceText}>
+          <Pressable
+            key={String(option.value)}
+            onPress={() => onSelect(option.value)}
+            style={({ pressed }) => [
+              styles.choice,
+              selected === option.value && styles.selectedChoice,
+              pressed && styles.pressed,
+            ]}>
+            <ThemedText
+              style={selected === option.value ? styles.selectedChoiceText : styles.choiceText}>
               {option.label}
             </ThemedText>
           </Pressable>
@@ -151,20 +220,47 @@ function ChoiceSection<T extends string>({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  safeArea: { flex: 1, width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center', paddingHorizontal: Spacing.four, paddingBottom: BottomTabInset },
+  safeArea: {
+    flex: 1,
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.four,
+    paddingBottom: BottomTabInset,
+  },
   content: { paddingBottom: Spacing.five, gap: Spacing.two },
   backButton: { paddingVertical: Spacing.two, marginBottom: Spacing.two },
   backText: { color: '#1F7A5A', fontWeight: '700' },
   title: { color: '#173A2D', marginTop: Spacing.one },
   field: { gap: Spacing.one, marginTop: Spacing.two },
-  input: { borderWidth: 1, borderColor: '#C9E2D6', borderRadius: 12, paddingHorizontal: Spacing.two, paddingVertical: Spacing.two, color: '#173A2D', fontSize: 16 },
+  input: {
+    borderWidth: 1,
+    borderColor: '#C9E2D6',
+    borderRadius: 12,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
+    color: '#173A2D',
+    fontSize: 16,
+  },
   section: { gap: Spacing.two, marginTop: Spacing.two },
   choiceList: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
-  choice: { borderWidth: 1, borderColor: '#C9E2D6', borderRadius: 18, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
+  choice: {
+    borderWidth: 1,
+    borderColor: '#C9E2D6',
+    borderRadius: 18,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
   selectedChoice: { backgroundColor: '#1F7A5A', borderColor: '#1F7A5A' },
   choiceText: { color: '#527064' },
   selectedChoiceText: { color: '#FFFFFF', fontWeight: '700' },
-  submitButton: { backgroundColor: '#1F7A5A', borderRadius: 18, padding: Spacing.three, alignItems: 'center', marginTop: Spacing.four },
+  submitButton: {
+    backgroundColor: '#1F7A5A',
+    borderRadius: 18,
+    padding: Spacing.three,
+    alignItems: 'center',
+    marginTop: Spacing.four,
+  },
   submitText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
   pressed: { opacity: 0.72 },
 });

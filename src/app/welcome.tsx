@@ -1,13 +1,30 @@
 import { router } from 'expo-router';
+import { useEffect } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { completeWelcome, loadFitnessProfile } from '@/lib/workout-preferences';
+import {
+  completeWelcome,
+  loadFitnessProfile,
+  loadProfileCompleted,
+} from '@/lib/workout-preferences';
 
 export default function WelcomeScreen() {
+  useEffect(() => {
+    loadProfileCompleted()
+      .then((completed) => {
+        if (completed) {
+          router.replace('/body-parts');
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to check profile completion in welcome.', error);
+      });
+  }, []);
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -76,7 +93,12 @@ const styles = StyleSheet.create({
   featureList: { gap: Spacing.two, marginTop: Spacing.four },
   feature: { borderRadius: 18, padding: Spacing.three, gap: Spacing.one },
   featureTitle: { color: '#173A2D', fontSize: 17, fontWeight: '700' },
-  button: { backgroundColor: '#1F7A5A', borderRadius: 18, padding: Spacing.three, alignItems: 'center' },
+  button: {
+    backgroundColor: '#1F7A5A',
+    borderRadius: 18,
+    padding: Spacing.three,
+    alignItems: 'center',
+  },
   buttonText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
   pressed: { opacity: 0.72 },
 });

@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useEffect } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -7,7 +8,7 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { backExercises } from '@/data/back-exercises';
 import {
-  loadWelcomeCompleted,
+  loadProfileCompleted,
   loadWorkoutPreferences,
   loadSelectedExerciseIds,
 } from '@/lib/workout-preferences';
@@ -31,17 +32,31 @@ const actions = [
 ];
 
 export default function HomeScreen() {
+  useEffect(() => {
+    loadProfileCompleted()
+      .then((completed) => {
+        if (!completed) {
+          // 未完成问卷的全新用户首次启动导向问卷
+          router.replace('/welcome');
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to check profile status on mount.', error);
+      });
+  }, []);
+
   const startTraining = async () => {
     try {
-      const welcomeCompleted = await loadWelcomeCompleted();
-      if (!welcomeCompleted) {
+      const profileCompleted = await loadProfileCompleted();
+      if (!profileCompleted) {
         router.push('/welcome');
         return;
       }
 
       const preferences = await loadWorkoutPreferences();
       if (!preferences) {
-        router.push('/welcome');
+        // 已完成问卷，跳过问卷直接进入部位设置
+        router.push('/body-parts');
         return;
       }
 

@@ -24,6 +24,8 @@ export type WorkoutPreferences = {
   equipment: Equipment[];
 };
 
+export type WeeklyDays = 3 | 4 | 5;
+
 export type FitnessProfile = {
   age: number;
   gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
@@ -31,6 +33,7 @@ export type FitnessProfile = {
   weightKg: number;
   goal: 'fat-loss' | 'body-shaping' | 'muscle-gain' | 'general-fitness';
   preferredWorkoutTime: 'morning' | 'afternoon' | 'evening';
+  weeklyDays: WeeklyDays;
 };
 
 export type PlannedTrainingFocus =

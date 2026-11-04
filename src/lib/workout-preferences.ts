@@ -14,6 +14,7 @@ import type { CompletedExercise, CompletedWorkout } from '@/types/training';
 const WORKOUT_PREFERENCES_KEY = 'fitness-coach:workout-preferences';
 const FITNESS_PROFILE_KEY = 'fitness-coach:fitness-profile';
 const WELCOME_COMPLETED_KEY = 'fitness-coach:welcome-completed';
+const PROFILE_COMPLETED_KEY = 'fitness-coach:profile-completed';
 const SELECTED_EXERCISES_KEY = 'fitness-coach:selected-exercises';
 const WORKOUT_HISTORY_KEY = 'fitness-coach:workout-history';
 const WEEKLY_TRAINING_PLAN_KEY = 'fitness-coach:weekly-training-plan';
@@ -65,6 +66,7 @@ export async function loadFitnessProfile(): Promise<FitnessProfile | null> {
 
 export async function saveFitnessProfile(profile: FitnessProfile): Promise<void> {
   await AsyncStorage.setItem(FITNESS_PROFILE_KEY, JSON.stringify(profile));
+  await completeProfile();
 }
 
 export async function loadWelcomeCompleted(): Promise<boolean> {
@@ -73,6 +75,20 @@ export async function loadWelcomeCompleted(): Promise<boolean> {
 
 export async function completeWelcome(): Promise<void> {
   await AsyncStorage.setItem(WELCOME_COMPLETED_KEY, 'true');
+}
+
+export async function loadProfileCompleted(): Promise<boolean> {
+  const profileCompleted = await AsyncStorage.getItem(PROFILE_COMPLETED_KEY);
+  if (profileCompleted === 'true') {
+    return true;
+  }
+  const savedProfile = await AsyncStorage.getItem(FITNESS_PROFILE_KEY);
+  return savedProfile !== null;
+}
+
+export async function completeProfile(): Promise<void> {
+  await AsyncStorage.setItem(PROFILE_COMPLETED_KEY, 'true');
+  await completeWelcome();
 }
 
 export async function loadSelectedExerciseIds(): Promise<string[]> {
@@ -216,8 +232,13 @@ function isFitnessProfile(value: unknown): value is FitnessProfile {
     isPositiveNumber(candidate.heightCm) &&
     isPositiveNumber(candidate.weightKg) &&
     isFitnessGoal(candidate.goal) &&
-    isWorkoutTime(candidate.preferredWorkoutTime)
+    isWorkoutTime(candidate.preferredWorkoutTime) &&
+    (candidate.weeklyDays === undefined || isWeeklyDays(candidate.weeklyDays))
   );
+}
+
+function isWeeklyDays(value: unknown): value is 3 | 4 | 5 {
+  return value === 3 || value === 4 || value === 5;
 }
 
 function isPositiveNumber(value: unknown): value is number {
