@@ -42,7 +42,7 @@ export default function WorkoutSessionScreen() {
   const currentExerciseIndex = exerciseId ? exerciseIds.indexOf(exerciseId) : -1;
   const nextExerciseId =
     currentExerciseIndex >= 0 ? exerciseIds[currentExerciseIndex + 1] : undefined;
-  const startedAt = useState(() => Number(startedAtParam ?? Date.now()))[0];
+  const [startedAt] = useState(() => Number(startedAtParam ?? Date.now()));
   const completedExercises = parseCompletedExercises(
     Array.isArray(completedExercisesParam)
       ? completedExercisesParam[0]
@@ -140,18 +140,17 @@ export default function WorkoutSessionScreen() {
 
   // 单组勾选/取消
   const toggleSetCompleted = (setNumber: number) => {
-    setSetsState((current) => {
-      const currentSets =
-        current.exerciseId === exerciseId ? current.values : createDefaultSets(exercise);
-      const updatedSets = currentSets.map((set) =>
-        set.setNumber === setNumber ? { ...set, completed: !set.completed } : set,
-      );
-      // 若勾选后全部完成，自动跳转
-      if (updatedSets.length > 0 && updatedSets.every((s) => s.completed)) {
-        finishExercise(updatedSets);
-      }
-      return { exerciseId: exerciseId ?? '', values: updatedSets };
-    });
+    const currentSets =
+      setsState.exerciseId === exerciseId ? setsState.values : createDefaultSets(exercise);
+    const updatedSets = currentSets.map((set) =>
+      set.setNumber === setNumber ? { ...set, completed: !set.completed } : set,
+    );
+    setSetsState({ exerciseId: exerciseId ?? '', values: updatedSets });
+
+    // 若勾选后全部完成，跳转（在 setState 之外执行路由跳转，避免 render 阶段 setState）
+    if (updatedSets.length > 0 && updatedSets.every((s) => s.completed)) {
+      finishExercise(updatedSets);
+    }
   };
 
   // 修改重量（同时持久化）
@@ -159,47 +158,42 @@ export default function WorkoutSessionScreen() {
     if (!exercise) {
       return;
     }
-    setSetsState((current) => {
-      const currentSets =
-        current.exerciseId === exerciseId ? current.values : createDefaultSets(exercise);
-      const next = currentSets.map((set) =>
-        set.setNumber === setNumber ? { ...set, weight } : set,
-      );
-      const savedWeights = Object.fromEntries(
-        next
-          .filter((set) => set.weight !== '')
-          .map((set) => [set.setNumber, set.weight]),
-      );
-      AsyncStorage.setItem(weightStorageKey(exercise.id), JSON.stringify(savedWeights)).catch(
-        (error: unknown) => {
-          console.error('Failed to save exercise weight.', error);
-        },
-      );
-      return { exerciseId: exercise.id, values: next };
-    });
+    const currentSets =
+      setsState.exerciseId === exerciseId ? setsState.values : createDefaultSets(exercise);
+    const next = currentSets.map((set) =>
+      set.setNumber === setNumber ? { ...set, weight } : set,
+    );
+    setSetsState({ exerciseId: exercise.id, values: next });
+
+    const savedWeights = Object.fromEntries(
+      next
+        .filter((set) => set.weight !== '')
+        .map((set) => [set.setNumber, set.weight]),
+    );
+    AsyncStorage.setItem(weightStorageKey(exercise.id), JSON.stringify(savedWeights)).catch(
+      (error: unknown) => {
+        console.error('Failed to save exercise weight.', error);
+      },
+    );
   };
 
   // 修改次数
   const updateReps = (setNumber: number, reps: string) => {
-    setSetsState((current) => {
-      const currentSets =
-        current.exerciseId === exerciseId ? current.values : createDefaultSets(exercise);
-      const updated = currentSets.map((set) =>
-        set.setNumber === setNumber ? { ...set, reps } : set,
-      );
-      return { exerciseId: exerciseId ?? '', values: updated };
-    });
+    const currentSets =
+      setsState.exerciseId === exerciseId ? setsState.values : createDefaultSets(exercise);
+    const updated = currentSets.map((set) =>
+      set.setNumber === setNumber ? { ...set, reps } : set,
+    );
+    setSetsState({ exerciseId: exerciseId ?? '', values: updated });
   };
 
   // 一键完成全部组
   const completeAllSets = () => {
-    setSetsState((current) => {
-      const currentSets =
-        current.exerciseId === exerciseId ? current.values : createDefaultSets(exercise);
-      const allCompleted = currentSets.map((set) => ({ ...set, completed: true }));
-      finishExercise(allCompleted);
-      return { exerciseId: exerciseId ?? '', values: allCompleted };
-    });
+    const currentSets =
+      setsState.exerciseId === exerciseId ? setsState.values : createDefaultSets(exercise);
+    const allCompleted = currentSets.map((set) => ({ ...set, completed: true }));
+    setSetsState({ exerciseId: exerciseId ?? '', values: allCompleted });
+    finishExercise(allCompleted);
   };
 
   const allCompleted = sets.length > 0 && sets.every((s) => s.completed);
@@ -452,6 +446,7 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: { color: '#FFFFFF', fontWeight: '700' },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginTop: Spacing.three },
+  // 表格布局
   tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -496,6 +491,7 @@ const styles = StyleSheet.create({
   checkText: { color: '#9AAFA5', fontSize: 16, fontWeight: '700' },
   checkTextDone: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   progressText: { marginTop: Spacing.two, textAlign: 'right' },
+  // 一键完成按钮
   finishButton: {
     backgroundColor: '#1F7A5A',
     borderRadius: 16,
