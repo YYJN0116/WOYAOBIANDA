@@ -8,6 +8,7 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { saveCompletedWorkout } from '@/lib/workout-preferences';
+import type { CompletedExercise } from '@/types/training';
 
 export default function WorkoutSummaryScreen() {
   const params = useLocalSearchParams<{
@@ -17,30 +18,52 @@ export default function WorkoutSummaryScreen() {
     totalSets?: string;
     totalReps?: string;
     totalVolume?: string;
+    startedAt?: string;
+    completedExercises?: string;
   }>();
   const theme = useTheme();
   const [note, setNote] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   const durationSeconds = Number(params.durationSeconds ?? 0);
   const completedSets = Number(params.completedSets ?? 0);
   const totalSets = Number(params.totalSets ?? 0);
   const totalReps = Number(params.totalReps ?? 0);
+  const completedExercises = parseCompletedExercises(
+    Array.isArray(params.completedExercises)
+      ? params.completedExercises[0]
+      : params.completedExercises,
+  );
 
   const finishWorkout = async () => {
+    if (isSaving) {
+      return;
+    }
+
+    setIsSaving(true);
     try {
+      const completedAt = new Date().toISOString();
+      const startedAt = new Date(
+        Number(Array.isArray(params.startedAt) ? params.startedAt[0] : params.startedAt) ||
+          Date.now() - durationSeconds * 1000,
+      ).toISOString();
+      const workoutId = startedAt;
       await saveCompletedWorkout({
-        id: `${Date.now()}`,
+        id: workoutId,
         exerciseName: params.exerciseName ?? '背部训练',
-        completedAt: new Date().toISOString(),
+        startedAt,
+        completedAt,
         durationSeconds,
         completedSets,
         totalSets,
         totalVolume: Number(params.totalVolume ?? 0),
+        exercises: completedExercises,
         note: note.trim() || undefined,
       });
       router.replace('/workout-plan');
     } catch (error: unknown) {
       console.error('Failed to save completed workout.', error);
       Alert.alert('保存失败', '训练总结暂时无法保存，请稍后重试。');
+      setIsSaving(false);
     }
   };
 
@@ -83,14 +106,50 @@ export default function WorkoutSummaryScreen() {
             value={note}
           />
           <Pressable
+            accessibilityRole="button"
+            disabled={isSaving}
             onPress={finishWorkout}
-            style={({ pressed }) => [styles.button, pressed && styles.pressed]}>
-            <ThemedText style={styles.buttonText}>保存并返回训练计划</ThemedText>
+            style={({ pressed }) => [styles.button, isSaving && styles.disabledButton, pressed && styles.pressed]}>
+            <ThemedText style={styles.buttonText}>
+              {isSaving ? '正在保存…' : '保存并返回训练计划'}
+            </ThemedText>
           </Pressable>
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
+}
+
+function parseCompletedExercises(value?: string): CompletedExercise[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter(
+      (exercise): exercise is CompletedExercise =>
+        !!exercise &&
+        typeof exercise === 'object' &&
+        typeof exercise.id === 'string' &&
+        typeof exercise.name === 'string' &&
+        Array.isArray(exercise.sets) &&
+        exercise.sets.every(
+          (set: unknown) =>
+            !!set &&
+            typeof set === 'object' &&
+            typeof (set as Record<string, unknown>).setNumber === 'number' &&
+            typeof (set as Record<string, unknown>).weight === 'number' &&
+            typeof (set as Record<string, unknown>).reps === 'number',
+        ),
+    );
+  } catch {
+    return [];
+  }
 }
 
 const styles = StyleSheet.create({
@@ -126,6 +185,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   button: { backgroundColor: '#1F7A5A', borderRadius: 18, padding: Spacing.three, alignItems: 'center', marginTop: Spacing.two },
+  disabledButton: { opacity: 0.6 },
   buttonText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
   pressed: { opacity: 0.72 },
 });

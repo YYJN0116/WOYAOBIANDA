@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
@@ -8,7 +8,6 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { saveWorkoutPreferences } from '@/lib/workout-preferences';
 import type { BackGoal, Equipment, ExperienceLevel } from '@/types/workout';
-import { Alert } from 'react-native';
 
 const goals: { value: BackGoal; label: string; description: string }[] = [
   { value: 'width', label: '宽度', description: '重点训练背阔肌，塑造 V 形背部' },

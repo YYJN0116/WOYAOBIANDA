@@ -12,6 +12,12 @@ export type TrainingExercise = {
   sets: TrainingSet[];
 };
 
+export type CompletedExercise = {
+  id: string;
+  name: string;
+  sets: TrainingSet[];
+};
+
 export type CardioEntry = {
   id: string;
   activity: string;
@@ -32,10 +38,12 @@ export type WorkoutSession = {
 export type CompletedWorkout = {
   id: string;
   exerciseName: string;
+  startedAt?: string;
   completedAt: string;
   durationSeconds: number;
   completedSets: number;
   totalSets: number;
   totalVolume: number;
+  exercises?: CompletedExercise[];
   note?: string;
 };

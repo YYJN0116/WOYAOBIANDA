@@ -62,6 +62,9 @@ export default function AppTabs() {
       <NativeTabs.Trigger name="workout-summary">
         <NativeTabs.Trigger.Label>训练总结</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="workout-history">
+        <NativeTabs.Trigger.Label>训练记录</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="exercise/[id]">
         <NativeTabs.Trigger.Label>动作详情</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>

@@ -107,9 +107,27 @@ export async function saveSelectedExerciseIds(exerciseIds: string[]): Promise<vo
 }
 
 export async function saveCompletedWorkout(workout: CompletedWorkout): Promise<void> {
+  if (!isCompletedWorkout(workout)) {
+    throw new Error('Completed workout is invalid.');
+  }
+
+  const history = await loadCompletedWorkouts();
+  const updatedHistory = [workout, ...history.filter((item) => item.id !== workout.id)];
+  await AsyncStorage.setItem(WORKOUT_HISTORY_KEY, JSON.stringify(updatedHistory));
+}
+
+export async function loadCompletedWorkouts(): Promise<CompletedWorkout[]> {
   const saved = await AsyncStorage.getItem(WORKOUT_HISTORY_KEY);
-  const history: CompletedWorkout[] = saved ? JSON.parse(saved) : [];
-  await AsyncStorage.setItem(WORKOUT_HISTORY_KEY, JSON.stringify([workout, ...history]));
+  if (saved === null) {
+    return [];
+  }
+
+  const parsed: unknown = JSON.parse(saved);
+  if (!Array.isArray(parsed) || !parsed.every(isCompletedWorkout)) {
+    throw new Error('Saved workout history is invalid.');
+  }
+
+  return parsed;
 }
 
 export async function loadWeeklyTrainingPlan(): Promise<WeeklyTrainingPlan | null> {
@@ -212,4 +230,55 @@ function isWeeklyTrainingPlan(value: unknown): value is WeeklyTrainingPlan {
           focus === 'rest',
       ),
   );
+}
+
+function isCompletedWorkout(value: unknown): value is CompletedWorkout {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.exerciseName === 'string' &&
+    typeof candidate.completedAt === 'string' &&
+    isNonNegativeNumber(candidate.durationSeconds) &&
+    isNonNegativeNumber(candidate.completedSets) &&
+    isNonNegativeNumber(candidate.totalSets) &&
+    isNonNegativeNumber(candidate.totalVolume) &&
+    (candidate.startedAt === undefined || typeof candidate.startedAt === 'string') &&
+    (candidate.note === undefined || typeof candidate.note === 'string') &&
+    (candidate.exercises === undefined ||
+      (Array.isArray(candidate.exercises) && candidate.exercises.every(isCompletedExercise)))
+  );
+}
+
+function isCompletedExercise(value: unknown): boolean {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.name === 'string' &&
+    Array.isArray(candidate.sets) &&
+    candidate.sets.every((set) => {
+      if (!set || typeof set !== 'object') {
+        return false;
+      }
+
+      const trainingSet = set as Record<string, unknown>;
+      return (
+        isNonNegativeNumber(trainingSet.setNumber) &&
+        isNonNegativeNumber(trainingSet.weight) &&
+        isNonNegativeNumber(trainingSet.reps) &&
+        (trainingSet.completedAt === undefined || typeof trainingSet.completedAt === 'string')
+      );
+    })
+  );
+}
+
+function isNonNegativeNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }

@@ -61,6 +61,9 @@ export default function AppTabs() {
             <TabTrigger name="workout-summary" href="/workout-summary" asChild>
               <TabButton style={styles.hiddenTab}>训练总结</TabButton>
             </TabTrigger>
+            <TabTrigger name="workout-history" href="/workout-history" asChild>
+              <TabButton style={styles.hiddenTab}>训练记录</TabButton>
+            </TabTrigger>
             <TabTrigger name="exercise/[id]" href="/exercise/[id]" asChild>
               <TabButton style={styles.hiddenTab}>动作详情</TabButton>
             </TabTrigger>

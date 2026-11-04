@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -12,7 +12,7 @@ import {
   saveSelectedExerciseIds,
 } from '@/lib/workout-preferences';
 import { MAX_DAILY_EXERCISES } from '@/types/workout';
-import type { BackGoal, Equipment, ExperienceLevel } from '@/types/workout';
+import type { BackGoal, Equipment } from '@/types/workout';
 
 const goalLabels: Record<BackGoal, string> = {
   width: '宽度',
@@ -28,12 +28,20 @@ export default function WorkoutResultScreen() {
   }>();
   const goal: BackGoal =
     params.goal === 'thickness' || params.goal === 'combined' ? params.goal : 'width';
-  const experience: ExperienceLevel =
-    params.experience === 'intermediate' || params.experience === 'advanced'
-      ? params.experience
-      : 'beginner';
-  const equipment = (params.equipment ?? '').split(',').filter(Boolean) as Equipment[];
-  const exercises = recommendBackWorkout({ bodyPart: 'back', goal, experience, equipment });
+  const exercises = useMemo(
+    () =>
+      recommendBackWorkout({
+        bodyPart: 'back',
+        goal:
+          params.goal === 'thickness' || params.goal === 'combined' ? params.goal : 'width',
+        experience:
+          params.experience === 'intermediate' || params.experience === 'advanced'
+            ? params.experience
+            : 'beginner',
+        equipment: (params.equipment ?? '').split(',').filter(Boolean) as Equipment[],
+      }),
+    [params.equipment, params.experience, params.goal],
+  );
   const recommendedIds = new Set(exercises.slice(0, 4).map((exercise) => exercise.id));
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -46,7 +54,7 @@ export default function WorkoutResultScreen() {
       .catch((error: unknown) => {
         console.error('Failed to load selected exercises.', error);
       });
-  }, [params.goal, params.experience, params.equipment]);
+  }, [exercises]);
 
   const toggleExercise = (exerciseId: string) => {
     setSelectedIds((current) => {
