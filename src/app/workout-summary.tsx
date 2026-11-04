@@ -42,27 +42,27 @@ export default function WorkoutSummaryScreen() {
     setIsSaving(true);
     try {
       const completedAt = new Date().toISOString();
-      const startedAt = new Date(
-        Number(Array.isArray(params.startedAt) ? params.startedAt[0] : params.startedAt) ||
-          Date.now() - durationSeconds * 1000,
-      ).toISOString();
+      const rawStarted = Array.isArray(params.startedAt) ? params.startedAt[0] : params.startedAt;
+      const startedTimestamp = Number(rawStarted) || Date.now() - Math.max(0, durationSeconds || 0) * 1000;
+      const startedAt = new Date(startedTimestamp).toISOString();
       const workoutId = startedAt;
       await saveCompletedWorkout({
         id: workoutId,
         exerciseName: params.exerciseName ?? '背部训练',
         startedAt,
         completedAt,
-        durationSeconds,
-        completedSets,
-        totalSets,
-        totalVolume: Number(params.totalVolume ?? 0),
+        durationSeconds: Math.max(0, durationSeconds || 0),
+        completedSets: Math.max(0, completedSets || 0),
+        totalSets: Math.max(0, totalSets || 0),
+        totalVolume: Math.max(0, Number(params.totalVolume ?? 0) || 0),
         exercises: completedExercises,
         note: note.trim() || undefined,
       });
-      router.replace('/workout-plan');
+      router.replace('/');
     } catch (error: unknown) {
       console.error('Failed to save completed workout.', error);
       Alert.alert('保存失败', '训练总结暂时无法保存，请稍后重试。');
+    } finally {
       setIsSaving(false);
     }
   };
@@ -111,7 +111,7 @@ export default function WorkoutSummaryScreen() {
             onPress={finishWorkout}
             style={({ pressed }) => [styles.button, isSaving && styles.disabledButton, pressed && styles.pressed]}>
             <ThemedText style={styles.buttonText}>
-              {isSaving ? '正在保存…' : '保存并返回训练计划'}
+              {isSaving ? '正在保存…' : '保存并返回首页'}
             </ThemedText>
           </Pressable>
         </ScrollView>

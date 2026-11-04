@@ -9,7 +9,7 @@ import type {
   WeeklyTrainingPlan,
   WorkoutPreferences,
 } from '@/types/workout';
-import type { CompletedWorkout } from '@/types/training';
+import type { CompletedExercise, CompletedWorkout } from '@/types/training';
 
 const WORKOUT_PREFERENCES_KEY = 'fitness-coach:workout-preferences';
 const FITNESS_PROFILE_KEY = 'fitness-coach:fitness-profile';
@@ -122,12 +122,44 @@ export async function loadCompletedWorkouts(): Promise<CompletedWorkout[]> {
     return [];
   }
 
-  const parsed: unknown = JSON.parse(saved);
-  if (!Array.isArray(parsed) || !parsed.every(isCompletedWorkout)) {
-    throw new Error('Saved workout history is invalid.');
-  }
+  try {
+    const parsed: unknown = JSON.parse(saved);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
 
-  return parsed;
+    return parsed
+      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+      .map((item) => ({
+        id: typeof item.id === 'string' ? item.id : String(Date.now()),
+        exerciseName: typeof item.exerciseName === 'string' ? item.exerciseName : '背部训练',
+        completedAt: typeof item.completedAt === 'string' ? item.completedAt : new Date().toISOString(),
+        durationSeconds:
+          typeof item.durationSeconds === 'number' && Number.isFinite(item.durationSeconds)
+            ? Math.max(0, item.durationSeconds)
+            : 0,
+        completedSets:
+          typeof item.completedSets === 'number' && Number.isFinite(item.completedSets)
+            ? Math.max(0, item.completedSets)
+            : 0,
+        totalSets:
+          typeof item.totalSets === 'number' && Number.isFinite(item.totalSets)
+            ? Math.max(0, item.totalSets)
+            : 0,
+        totalVolume:
+          typeof item.totalVolume === 'number' && Number.isFinite(item.totalVolume)
+            ? Math.max(0, item.totalVolume)
+            : 0,
+        startedAt: typeof item.startedAt === 'string' ? item.startedAt : undefined,
+        note: typeof item.note === 'string' ? item.note : undefined,
+        exercises: Array.isArray(item.exercises)
+          ? (item.exercises as unknown[]).filter(isCompletedExercise)
+          : undefined,
+      }));
+  } catch (error: unknown) {
+    console.error('Failed to parse completed workouts history.', error);
+    return [];
+  }
 }
 
 export async function loadWeeklyTrainingPlan(): Promise<WeeklyTrainingPlan | null> {
@@ -253,7 +285,7 @@ function isCompletedWorkout(value: unknown): value is CompletedWorkout {
   );
 }
 
-function isCompletedExercise(value: unknown): boolean {
+function isCompletedExercise(value: unknown): value is CompletedExercise {
   if (!value || typeof value !== 'object') {
     return false;
   }
