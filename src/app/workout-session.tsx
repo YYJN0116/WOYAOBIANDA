@@ -9,8 +9,8 @@ import { ThemedView } from '@/components/themed-view';
 import { backExercises } from '@/data/back-exercises';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import type { CompletedExercise } from '@/types/training';
 
-const weightOptions = [0, 2.5, 5, 7.5, 10, 12.5, 15, 20, 25, 30, 40, 50, 60];
 const weightStorageKey = (exerciseId: string) => `fitness-coach:weight:${exerciseId}`;
 
 export default function WorkoutSessionScreen() {
@@ -22,6 +22,7 @@ export default function WorkoutSessionScreen() {
     totalReps: totalRepsParam,
     totalVolume: totalVolumeParam,
     startedAt: startedAtParam,
+    completedExercises: completedExercisesParam,
   } = useLocalSearchParams<{
     id?: string;
     workoutIds?: string;
@@ -30,6 +31,7 @@ export default function WorkoutSessionScreen() {
     totalReps?: string;
     totalVolume?: string;
     startedAt?: string;
+    completedExercises?: string;
   }>();
   const theme = useTheme();
   const exerciseId = Array.isArray(id) ? id[0] : id;
@@ -41,46 +43,42 @@ export default function WorkoutSessionScreen() {
   const nextExerciseId =
     currentExerciseIndex >= 0 ? exerciseIds[currentExerciseIndex + 1] : undefined;
   const startedAt = useState(() => Number(startedAtParam ?? Date.now()))[0];
-  const [sets, setSets] = useState<WorkoutSet[]>(() =>
-    exercise
-      ? Array.from({ length: exercise.defaultSets }, (_, index) => ({
-          setNumber: index + 1,
-          weight: '',
-          reps: getInitialReps(exercise.defaultReps),
-          completed: false,
-        }))
-      : [],
+  const completedExercises = parseCompletedExercises(
+    Array.isArray(completedExercisesParam)
+      ? completedExercisesParam[0]
+      : completedExercisesParam,
   );
+  const [setsState, setSetsState] = useState(() => ({
+    exerciseId,
+    values: createDefaultSets(exercise),
+  }));
+  const sets = setsState.exerciseId === exerciseId ? setsState.values : createDefaultSets(exercise);
 
   useEffect(() => {
     if (!exercise) {
-      setSets([]);
       return;
     }
 
     let active = true;
-    setSets(
-      Array.from({ length: exercise.defaultSets }, (_, index) => ({
-        setNumber: index + 1,
-        weight: '',
-        reps: getInitialReps(exercise.defaultReps),
-        completed: false,
-      })),
-    );
-
     AsyncStorage.getItem(weightStorageKey(exercise.id))
       .then((savedWeight) => {
-        if (!active || savedWeight === null) {
+        if (!active) {
           return;
         }
 
-        const savedWeights = parseSavedWeights(savedWeight);
-        setSets((current) =>
-          current.map((set) => ({
-            ...set,
-            weight: savedWeights[set.setNumber] ?? savedWeights.default ?? '',
-          })),
-        );
+        const savedWeights: SavedWeights =
+          savedWeight === null ? {} : parseSavedWeights(savedWeight);
+        setSetsState((current) => {
+          const currentSets =
+            current.exerciseId === exercise.id ? current.values : createDefaultSets(exercise);
+          return {
+            exerciseId: exercise.id,
+            values: currentSets.map((set) => ({
+              ...set,
+              weight: savedWeights[set.setNumber] ?? savedWeights.default ?? set.weight,
+            })),
+          };
+        });
       })
       .catch((error: unknown) => {
         console.error('Failed to load saved exercise weight.', error);
@@ -91,78 +89,81 @@ export default function WorkoutSessionScreen() {
     };
   }, [exercise]);
 
-  const updateSet = (setNumber: number, changes: Partial<WorkoutSet>) => {
-    setSets((current) => {
-      const updatedSets = current.map((set) =>
-        set.setNumber === setNumber ? { ...set, ...changes } : set,
-      );
-      const completedCurrentSet = changes.completed === true;
-      const finishedExercise =
-        completedCurrentSet && updatedSets.length > 0 && updatedSets.every((set) => set.completed);
-
-      if (finishedExercise && nextExerciseId) {
-        const remainingExerciseIds = exerciseIds.slice(currentExerciseIndex + 1).join(',');
-        const completedSets = Number(completedSetsParam ?? 0) + updatedSets.length;
-        const totalSets = Number(totalSetsParam ?? 0) + updatedSets.length;
-        const totalReps =
-          Number(totalRepsParam ?? 0) +
-          updatedSets.reduce((sum, set) => sum + Number(set.reps || 0), 0);
-        const totalVolume =
-          Number(totalVolumeParam ?? 0) +
-          updatedSets.reduce(
-            (sum, set) => sum + Number(set.weight || 0) * Number(set.reps || 0),
-            0,
-          );
-        router.replace({
-          pathname: '/workout-session',
-          params: {
-            id: nextExerciseId,
-            workoutIds: remainingExerciseIds,
-            completedSets: String(completedSets),
-            totalSets: String(totalSets),
-            totalReps: String(totalReps),
-            totalVolume: String(totalVolume),
-            startedAt: String(startedAt),
-          },
-        });
-      } else if (finishedExercise) {
-        const completedSets = Number(completedSetsParam ?? 0) + updatedSets.length;
-        const totalSets = Number(totalSetsParam ?? 0) + updatedSets.length;
-        const totalReps =
-          Number(totalRepsParam ?? 0) +
-          updatedSets.reduce((sum, set) => sum + Number(set.reps || 0), 0);
-        const totalVolume =
-          Number(totalVolumeParam ?? 0) +
-          updatedSets.reduce(
-            (sum, set) => sum + Number(set.weight || 0) * Number(set.reps || 0),
-            0,
-          );
-        router.replace({
-          pathname: '/workout-summary',
-          params: {
-            exerciseName: '背部训练',
-            completedSets: String(completedSets),
-            totalSets: String(totalSets),
-            totalReps: String(totalReps),
-            totalVolume: String(totalVolume),
-            durationSeconds: String(Math.max(1, Math.floor((Date.now() - startedAt) / 1000))),
-          },
-        });
-      }
-
-      return updatedSets;
-    });
-  };
-
-  const selectWeight = (setNumber: number, weight: number) => {
+  // 完成一个动作（全部组）并跳转到下一动作或总结页
+  const finishExercise = (currentSets: WorkoutSet[]) => {
     if (!exercise) {
       return;
     }
+    const completedExercise = createCompletedExercise(exercise, currentSets);
+    const addedSets = currentSets.length;
+    const addedReps = currentSets.reduce((sum, set) => sum + Number(set.reps || 0), 0);
+    const addedVolume = currentSets.reduce(
+      (sum, set) => sum + Number(set.weight || 0) * Number(set.reps || 0),
+      0,
+    );
+    const completedSets = Number(completedSetsParam ?? 0) + addedSets;
+    const totalSets = Number(totalSetsParam ?? 0) + addedSets;
+    const totalReps = Number(totalRepsParam ?? 0) + addedReps;
+    const totalVolume = Number(totalVolumeParam ?? 0) + addedVolume;
 
-    const savedWeight = String(weight);
-    setSets((current) => {
-      const next = current.map((set) =>
-        set.setNumber === setNumber ? { ...set, weight: savedWeight } : set,
+    if (nextExerciseId) {
+      const remainingExerciseIds = exerciseIds.slice(currentExerciseIndex + 1).join(',');
+      router.replace({
+        pathname: '/workout-session',
+        params: {
+          id: nextExerciseId,
+          workoutIds: remainingExerciseIds,
+          completedSets: String(completedSets),
+          totalSets: String(totalSets),
+          totalReps: String(totalReps),
+          totalVolume: String(totalVolume),
+          startedAt: String(startedAt),
+          completedExercises: JSON.stringify([...completedExercises, completedExercise]),
+        },
+      });
+    } else {
+      router.replace({
+        pathname: '/workout-summary',
+        params: {
+          exerciseName: '背部训练',
+          completedSets: String(completedSets),
+          totalSets: String(totalSets),
+          totalReps: String(totalReps),
+          totalVolume: String(totalVolume),
+          durationSeconds: String(Math.max(1, Math.floor((Date.now() - startedAt) / 1000))),
+          startedAt: String(startedAt),
+          completedExercises: JSON.stringify([...completedExercises, completedExercise]),
+        },
+      });
+    }
+  };
+
+  // 单组勾选/取消
+  const toggleSetCompleted = (setNumber: number) => {
+    setSetsState((current) => {
+      const currentSets =
+        current.exerciseId === exerciseId ? current.values : createDefaultSets(exercise);
+      const updatedSets = currentSets.map((set) =>
+        set.setNumber === setNumber ? { ...set, completed: !set.completed } : set,
+      );
+      // 若勾选后全部完成，自动跳转
+      if (updatedSets.length > 0 && updatedSets.every((s) => s.completed)) {
+        finishExercise(updatedSets);
+      }
+      return { exerciseId: exerciseId ?? '', values: updatedSets };
+    });
+  };
+
+  // 修改重量（同时持久化）
+  const updateWeight = (setNumber: number, weight: string) => {
+    if (!exercise) {
+      return;
+    }
+    setSetsState((current) => {
+      const currentSets =
+        current.exerciseId === exerciseId ? current.values : createDefaultSets(exercise);
+      const next = currentSets.map((set) =>
+        set.setNumber === setNumber ? { ...set, weight } : set,
       );
       const savedWeights = Object.fromEntries(
         next
@@ -174,16 +175,42 @@ export default function WorkoutSessionScreen() {
           console.error('Failed to save exercise weight.', error);
         },
       );
-      return next;
+      return { exerciseId: exercise.id, values: next };
     });
   };
+
+  // 修改次数
+  const updateReps = (setNumber: number, reps: string) => {
+    setSetsState((current) => {
+      const currentSets =
+        current.exerciseId === exerciseId ? current.values : createDefaultSets(exercise);
+      const updated = currentSets.map((set) =>
+        set.setNumber === setNumber ? { ...set, reps } : set,
+      );
+      return { exerciseId: exerciseId ?? '', values: updated };
+    });
+  };
+
+  // 一键完成全部组
+  const completeAllSets = () => {
+    setSetsState((current) => {
+      const currentSets =
+        current.exerciseId === exerciseId ? current.values : createDefaultSets(exercise);
+      const allCompleted = currentSets.map((set) => ({ ...set, completed: true }));
+      finishExercise(allCompleted);
+      return { exerciseId: exerciseId ?? '', values: allCompleted };
+    });
+  };
+
+  const allCompleted = sets.length > 0 && sets.every((s) => s.completed);
+  const completedCount = sets.filter((s) => s.completed).length;
 
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <ThemedText style={styles.backText}>‹ 返回动作详情</ThemedText>
+            <ThemedText style={styles.backText}>‹ 返回</ThemedText>
           </Pressable>
 
           {exercise ? (
@@ -202,85 +229,89 @@ export default function WorkoutSessionScreen() {
                   动作 {currentExerciseIndex + 1} / {exerciseIds.length}
                 </ThemedText>
               )}
+
               <ThemedText themeColor="text" style={styles.sectionTitle}>
                 记录每组训练
               </ThemedText>
-              <View style={styles.setList}>
-                {sets.map((set) => (
-                  <ThemedView
-                    key={set.setNumber}
-                    type={set.completed ? 'backgroundSelected' : 'background'}
-                    style={styles.setCard}>
-                    <View style={styles.setHeader}>
-                      <ThemedText themeColor="text" style={styles.setTitle}>
-                        第 {set.setNumber} 组
-                      </ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {set.completed ? '已完成' : '未完成'}
-                      </ThemedText>
-                    </View>
-                    <View style={styles.inputGroup}>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        重量（公斤）
-                      </ThemedText>
-                      <View style={styles.weightList}>
-                        {weightOptions.map((weight) => (
-                          <Pressable
-                            key={weight}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: set.weight === String(weight) }}
-                            onPress={() => selectWeight(set.setNumber, weight)}
-                            style={({ pressed }) => [
-                              styles.weightCard,
-                              set.weight === String(weight) && styles.selectedWeightCard,
-                              pressed && styles.pressed,
-                            ]}>
-                            <ThemedText
-                              themeColor="text"
-                              style={
-                                set.weight === String(weight)
-                                  ? styles.selectedWeightText
-                                  : styles.weightText
-                              }>
-                              {weight} kg
-                            </ThemedText>
-                          </Pressable>
-                        ))}
-                      </View>
-                    </View>
-                    <View style={styles.inputGroup}>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        次数
-                      </ThemedText>
-                      <TextInput
-                        accessibilityLabel={`第${set.setNumber}组次数`}
-                        keyboardType="number-pad"
-                        onChangeText={(reps) => updateSet(set.setNumber, { reps })}
-                        placeholder={exercise.defaultReps}
-                        placeholderTextColor="#9AAFA5"
-                        style={[styles.input, { color: theme.text }]}
-                        value={set.reps}
-                      />
-                    </View>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityState={{ checked: set.completed }}
-                      onPress={() =>
-                        updateSet(set.setNumber, { completed: !set.completed })
-                      }
-                      style={({ pressed }) => [
-                        styles.completeButton,
-                        set.completed && styles.completedButton,
-                        pressed && styles.pressed,
-                      ]}>
-                      <ThemedText
-                        style={set.completed ? styles.completedButtonText : styles.completeText}>
-                        {set.completed ? '已完成本组' : '标记本组完成'}
-                      </ThemedText>
-                    </Pressable>
-                  </ThemedView>
-                ))}
+
+              {/* 表头 */}
+              <View style={styles.tableHeader}>
+                <ThemedText style={styles.colSet} themeColor="textSecondary">组</ThemedText>
+                <ThemedText style={styles.colWeight} themeColor="textSecondary">重量 (kg)</ThemedText>
+                <ThemedText style={styles.colReps} themeColor="textSecondary">次数</ThemedText>
+                <ThemedText style={styles.colCheck} themeColor="textSecondary">完成</ThemedText>
               </View>
+
+              {/* 每组数据行 */}
+              {sets.map((set) => (
+                <ThemedView
+                  key={set.setNumber}
+                  type={set.completed ? 'backgroundSelected' : 'background'}
+                  style={styles.tableRow}>
+                  {/* 组号 */}
+                  <ThemedText style={[styles.colSet, styles.rowText]} themeColor="text">
+                    {set.setNumber}
+                  </ThemedText>
+
+                  {/* 重量输入 */}
+                  <TextInput
+                    accessibilityLabel={`第${set.setNumber}组重量`}
+                    keyboardType="decimal-pad"
+                    onChangeText={(w) => updateWeight(set.setNumber, w)}
+                    placeholder={set.weight || '0'}
+                    placeholderTextColor="#9AAFA5"
+                    style={[styles.colWeight, styles.rowInput, { color: theme.text }]}
+                    value={set.weight}
+                  />
+
+                  {/* 次数输入 */}
+                  <TextInput
+                    accessibilityLabel={`第${set.setNumber}组次数`}
+                    keyboardType="number-pad"
+                    onChangeText={(r) => updateReps(set.setNumber, r)}
+                    placeholder={exercise.defaultReps}
+                    placeholderTextColor="#9AAFA5"
+                    style={[styles.colReps, styles.rowInput, { color: theme.text }]}
+                    value={set.reps}
+                  />
+
+                  {/* 单组完成勾选 */}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ checked: set.completed }}
+                    onPress={() => toggleSetCompleted(set.setNumber)}
+                    style={[
+                      styles.colCheck,
+                      styles.checkButton,
+                      set.completed && styles.checkButtonDone,
+                    ]}>
+                    <ThemedText style={set.completed ? styles.checkTextDone : styles.checkText}>
+                      {set.completed ? '✓' : '○'}
+                    </ThemedText>
+                  </Pressable>
+                </ThemedView>
+              ))}
+
+              {/* 进度提示 */}
+              <ThemedText type="small" themeColor="textSecondary" style={styles.progressText}>
+                已完成 {completedCount} / {sets.length} 组
+              </ThemedText>
+
+              {/* 一键完成全部组 */}
+              <Pressable
+                accessibilityRole="button"
+                onPress={completeAllSets}
+                style={({ pressed }) => [
+                  styles.finishButton,
+                  allCompleted && styles.finishButtonDone,
+                  pressed && styles.pressed,
+                ]}>
+                <ThemedText style={styles.finishButtonText}>
+                  {allCompleted
+                    ? '已完成，继续 →'
+                    : `完成本动作（全部 ${sets.length} 组）`}
+                </ThemedText>
+              </Pressable>
             </ThemedView>
           ) : (
             <ThemedView type="backgroundElement" style={styles.card}>
@@ -314,11 +345,76 @@ type WorkoutSet = {
   completed: boolean;
 };
 
-function parseSavedWeights(value: string): Record<number | 'default', string> {
+function createDefaultSets(exercise: (typeof backExercises)[number] | undefined): WorkoutSet[] {
+  if (!exercise) {
+    return [];
+  }
+
+  return Array.from({ length: exercise.defaultSets }, (_, index) => ({
+    setNumber: index + 1,
+    weight: '',
+    reps: getInitialReps(exercise.defaultReps),
+    completed: false,
+  }));
+}
+
+function createCompletedExercise(
+  exercise: (typeof backExercises)[number],
+  sets: WorkoutSet[],
+): CompletedExercise {
+  return {
+    id: exercise.id,
+    name: exercise.name,
+    sets: sets
+      .filter((set) => set.completed)
+      .map((set) => ({
+        setNumber: set.setNumber,
+        weight: Number(set.weight) || 0,
+        reps: Number(set.reps) || 0,
+        completedAt: new Date().toISOString(),
+      })),
+  };
+}
+
+function parseCompletedExercises(value?: string): CompletedExercise[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter(
+      (exercise): exercise is CompletedExercise =>
+        !!exercise &&
+        typeof exercise === 'object' &&
+        typeof exercise.id === 'string' &&
+        typeof exercise.name === 'string' &&
+        Array.isArray(exercise.sets) &&
+        exercise.sets.every(
+          (set: unknown) =>
+            !!set &&
+            typeof set === 'object' &&
+            typeof (set as Record<string, unknown>).setNumber === 'number' &&
+            typeof (set as Record<string, unknown>).weight === 'number' &&
+            typeof (set as Record<string, unknown>).reps === 'number',
+        ),
+    );
+  } catch {
+    return [];
+  }
+}
+
+type SavedWeights = Partial<Record<number, string>> & { default?: string };
+
+function parseSavedWeights(value: string): SavedWeights {
   try {
     const parsed: unknown = JSON.parse(value);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<number | 'default', string>;
+      return parsed as SavedWeights;
     }
   } catch {
     return { default: value };
@@ -356,41 +452,58 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: { color: '#FFFFFF', fontWeight: '700' },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginTop: Spacing.three },
-  setList: { gap: Spacing.two, marginTop: Spacing.one },
-  setCard: { borderRadius: 16, padding: Spacing.three, gap: Spacing.two },
-  setHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  setTitle: { fontSize: 17, fontWeight: '700' },
-  inputGroup: { flex: 1, gap: Spacing.one },
-  weightList: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
-  weightCard: {
-    minWidth: 64,
+  tableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.one,
+    marginTop: Spacing.two,
+    borderBottomWidth: 1,
+    borderBottomColor: '#C9E2D6',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.two,
+    marginTop: Spacing.one,
+  },
+  colSet: { width: 28, textAlign: 'center', fontSize: 13 },
+  colWeight: { flex: 2, textAlign: 'center', fontSize: 13 },
+  colReps: { flex: 2, textAlign: 'center', fontSize: 13 },
+  colCheck: { width: 44, alignItems: 'center' },
+  rowText: { fontSize: 15, fontWeight: '700' },
+  rowInput: {
     borderWidth: 1,
     borderColor: '#C9E2D6',
-    borderRadius: 12,
+    borderRadius: 10,
     paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.two,
-    alignItems: 'center',
+    paddingVertical: 6,
+    fontSize: 15,
+    marginHorizontal: 4,
+    textAlign: 'center',
   },
-  selectedWeightCard: { backgroundColor: '#1F7A5A', borderColor: '#1F7A5A' },
-  weightText: { fontWeight: '700' },
-  selectedWeightText: { color: '#FFFFFF', fontWeight: '700' },
-  input: {
-    borderWidth: 1,
+  checkButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
     borderColor: '#C9E2D6',
-    borderRadius: 12,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.two,
-    fontSize: 16,
-  },
-  completeButton: {
-    borderWidth: 1,
-    borderColor: '#1F7A5A',
-    borderRadius: 12,
-    paddingVertical: Spacing.two,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  completedButton: { backgroundColor: '#1F7A5A' },
-  completeText: { color: '#1F7A5A', fontWeight: '700' },
-  completedButtonText: { color: '#FFFFFF', fontWeight: '700' },
+  checkButtonDone: { backgroundColor: '#1F7A5A', borderColor: '#1F7A5A' },
+  checkText: { color: '#9AAFA5', fontSize: 16, fontWeight: '700' },
+  checkTextDone: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  progressText: { marginTop: Spacing.two, textAlign: 'right' },
+  finishButton: {
+    backgroundColor: '#1F7A5A',
+    borderRadius: 16,
+    padding: Spacing.three,
+    alignItems: 'center',
+    marginTop: Spacing.three,
+  },
+  finishButtonDone: { backgroundColor: '#527064' },
+  finishButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   pressed: { opacity: 0.72 },
 });

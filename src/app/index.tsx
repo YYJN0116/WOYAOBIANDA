@@ -5,9 +5,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { backExercises } from '@/data/back-exercises';
 import {
   loadWelcomeCompleted,
   loadWorkoutPreferences,
+  loadSelectedExerciseIds,
 } from '@/lib/workout-preferences';
 
 const actions = [
@@ -19,6 +21,11 @@ const actions = [
   {
     title: '训练计划',
     description: '根据目标查看适合你的训练安排',
+    primary: false,
+  },
+  {
+    title: '训练记录',
+    description: '回顾已完成的训练、重量和次数',
     primary: false,
   },
 ];
@@ -38,8 +45,39 @@ export default function HomeScreen() {
         return;
       }
 
+      // 尝试加载已选动作，直接进入训练记录界面
+      let selectedIds: string[] = [];
+      try {
+        selectedIds = await loadSelectedExerciseIds();
+      } catch {
+        // 未选动作或无效 → 降级到动作选择页
+      }
+
+      if (selectedIds.length >= 4) {
+        const exercises = selectedIds
+          .map((id) => backExercises.find((e) => e.id === id))
+          .filter((e): e is (typeof backExercises)[number] => Boolean(e));
+        if (exercises.length >= 4) {
+          router.push({
+            pathname: '/workout-session',
+            params: {
+              id: exercises[0].id,
+              workoutIds: exercises.map((e) => e.id).join(','),
+              startedAt: String(Date.now()),
+            },
+          });
+          return;
+        }
+      }
+
+      // 没有已选动作 → 进入动作选择页
       router.push({
-        pathname: '/workout-plan',
+        pathname: '/workout-result',
+        params: {
+          goal: preferences.goal,
+          experience: preferences.experience,
+          equipment: preferences.equipment.join(','),
+        },
       });
     } catch (error: unknown) {
       console.error('Failed to start saved workout.', error);
@@ -68,7 +106,13 @@ export default function HomeScreen() {
             <Pressable
               key={action.title}
               accessibilityRole="button"
-              onPress={action.primary ? startTraining : () => router.push('/workout-plan')}
+              onPress={
+                action.title === '训练记录'
+                  ? () => router.push('/workout-history')
+                  : action.primary
+                    ? startTraining
+                    : () => router.push('/workout-plan')
+              }
               style={({ pressed }) => [
                 styles.actionButton,
                 action.primary ? styles.primaryButton : styles.secondaryButton,
