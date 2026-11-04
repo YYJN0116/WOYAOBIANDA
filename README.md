@@ -20,7 +20,7 @@
 - React 19
 - TypeScript 6
 - Expo Router
-- AsyncStorage（已安装，持久化功能仍待接入）
+- AsyncStorage（已安装；本地训练记录接入进度见项目报告）
 
 ## 开始使用
 
@@ -46,8 +46,8 @@ npx tsc --noEmit
 - `src/lib/`：训练推荐和业务逻辑
 - `src/types/`：TypeScript 类型
 - `assets/`：图标、启动图和图片资源
-- `PROJECT_REPORT.md`：当前进度、作用和后续目标报告
+- `PROJECT_REPORT/`：原始进度报告和后续实现报告
 
 ## 当前限制
 
-目前主要是本地演示版本，训练数据范围集中在背部，尚未接入后端账号、云端同步、完整的训练记录和真实设备通知。详细说明见 [PROJECT_REPORT.md](./PROJECT_REPORT.md)。
+目前主要是本地演示版本，训练数据范围集中在背部，尚未接入后端账号、云端同步和真实设备通知。详细进度见 [项目报告文件夹](./PROJECT_REPORT/README.md)。
